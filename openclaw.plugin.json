@@ -1,0 +1,7 @@
+{
+  "id": "skill-streaming",
+  "name": "Skill Streaming Progress",
+  "version": "0.1.0",
+  "description": "Auto-inject streaming progress for skill tool calls",
+  "main": "dist/index.js"
+}
