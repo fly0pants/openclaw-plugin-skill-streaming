@@ -3,5 +3,15 @@
   "name": "Skill Streaming Progress",
   "version": "0.1.0",
   "description": "Auto-inject streaming progress for skill tool calls",
-  "main": "dist/index.js"
+  "main": "dist/index.js",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean", "default": true },
+      "locale": { "type": "string", "enum": ["en", "zh", "auto"], "default": "auto" },
+      "summaryEnabled": { "type": "boolean", "default": true },
+      "longRunningMs": { "type": "number", "default": 15000 }
+    }
+  }
 }
