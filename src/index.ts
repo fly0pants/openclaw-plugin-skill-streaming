@@ -6,7 +6,6 @@ import { parseStreamingConfig } from "./config-loader.js";
 import { formatStepStart, formatStepDone, formatStillWorking, formatSummary } from "./formatter.js";
 import { sendProgress } from "./sender.js";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 // OpenClaw Plugin SDK types — minimal subset for type safety
 type OpenClawPluginApi = {
