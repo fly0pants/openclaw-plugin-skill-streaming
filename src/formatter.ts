@@ -43,3 +43,50 @@ export function formatSummary(state: RunState, locale: Locale): string {
   }
   return `📊 Done: ${count} steps in ${elapsed}`;
 }
+
+/**
+ * Render the entire run state into a single updatable message.
+ * Called on every state change to produce the latest view.
+ */
+export function formatProgressView(
+  state: RunState,
+  totalSteps: number | null,
+  locale: Locale,
+  final?: boolean,
+): string {
+  const lines: string[] = [];
+  const skill = (!state.skillName || state.skillName === "unknown") ? "Skill" : state.skillName;
+
+  // Header line
+  if (final) {
+    const elapsed = fmtDuration(Date.now() - state.startedAt);
+    const count = state.steps.length;
+    if (locale === "zh") {
+      lines.push(`✅ ${skill} · ${count} 步 · ${elapsed}`);
+    } else {
+      lines.push(`✅ ${skill} · ${count} step${count !== 1 ? "s" : ""} · ${elapsed}`);
+    }
+  } else {
+    lines.push(`⏳ ${skill}`);
+  }
+
+  // Each step
+  for (const step of state.steps) {
+    const prefix = stepPrefix(step.index, totalSteps);
+    if (step.status === "done") {
+      const dur = step.finishedAt ? ` (${fmtDuration(step.finishedAt - step.startedAt)})` : "";
+      lines.push(`  ✅ ${prefix} ${step.label}${dur}`);
+    } else if (step.status === "error") {
+      const dur = step.finishedAt ? ` (${fmtDuration(step.finishedAt - step.startedAt)})` : "";
+      lines.push(`  ❌ ${prefix} ${step.label}${dur}`);
+    } else {
+      // running
+      const elapsed = fmtDuration(Date.now() - step.startedAt);
+      const longWarn = step.longRunning && (Date.now() - step.startedAt > 10_000)
+        ? " ⚠️" : "";
+      lines.push(`  ⏳ ${prefix} ${step.label}... (${elapsed})${longWarn}`);
+    }
+  }
+
+  return lines.join("\n");
+}
