@@ -1,97 +1,107 @@
-# openclaw-plugin-skill-streaming
-
-[![npm version](https://img.shields.io/npm/v/openclaw-plugin-skill-streaming)](https://www.npmjs.com/package/openclaw-plugin-skill-streaming)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-**Auto-inject streaming progress messages during skill tool call execution for [OpenClaw](https://openclaw.dev).**
+<p align="center">
+  <h1 align="center">openclaw-plugin-skill-streaming</h1>
+  <p align="center">
+    <strong>Auto-inject streaming progress messages for <a href="https://openclaw.dev">OpenClaw</a> skill execution</strong>
+  </p>
+  <p align="center">
+    <a href="https://www.npmjs.com/package/openclaw-plugin-skill-streaming"><img src="https://img.shields.io/npm/v/openclaw-plugin-skill-streaming?style=flat-square&color=blue" alt="npm version"></a>
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT"></a>
+    <a href="#supported-channels"><img src="https://img.shields.io/badge/channels-7%2B-purple?style=flat-square" alt="Channels"></a>
+    <a href="#"><img src="https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square" alt="Zero Dependencies"></a>
+  </p>
+  <p align="center">
+    <a href="./README_CN.md">中文文档</a>
+  </p>
+</p>
 
 ---
 
 ## The Problem
 
-When an OpenClaw skill runs, it may execute multiple tool calls in the background — fetching APIs, running commands, processing data. From the user's perspective, nothing happens. No feedback, no indication of progress. For long-running tasks this creates a poor experience.
+When an OpenClaw skill runs, it executes tool calls in the background — fetching APIs, running commands, processing data. The user sees **nothing** until the final response arrives. For tasks that take 10–30+ seconds, this creates a frustrating "black box" experience.
 
 ## The Solution
 
-`openclaw-plugin-skill-streaming` hooks into OpenClaw's plugin system and automatically sends progress messages to the user's messaging channel as each tool call begins and completes. No changes to your skills are required.
+This plugin hooks into OpenClaw's lifecycle and sends **real-time progress messages** to the user's chat as each step runs. Zero changes to your skills required.
 
 ```
-⏳ [1/3] Querying api.example.com/v1/search...
-✅ [1/3] Querying api.example.com/v1/search (2.3s)
-⏳ [2/3] Processing data...
-⚠️  Still working on Processing data... (15.0s)
-✅ [2/3] Processing data (18.5s)
-⏳ [3/3] Running: generate-report...
-✅ [3/3] Running: generate-report (1.2s)
-📊 Done: 3 steps in 21.0s
+User: Check the weather in Beijing
+
+⏳ [1/?] Executing: web_fetch...
+⏳ [2/?] Executing: web_search...
+⏳ [3/?] Executing: exec...
+📊 Done: 3 steps in 25.8s
+
+Bot: Beijing current weather: ☀️ +4°C ...
 ```
 
 ---
 
-## Installation
+## Quick Start
 
-### From local path (development)
+### Install
 
 ```bash
+# From local path
 openclaw plugins install -l /path/to/openclaw-plugin-skill-streaming
-```
 
-### From npm
-
-```bash
+# Or from npm
 npm install openclaw-plugin-skill-streaming
 openclaw plugins install -l node_modules/openclaw-plugin-skill-streaming
 ```
 
-After installation, enable the plugin in `~/.openclaw/openclaw.json`:
+### Enable
 
-```json
+Add to `~/.openclaw/openclaw.json`:
+
+```jsonc
 {
   "plugins": {
     "entries": {
-      "skill-streaming": {
-        "enabled": true,
-        "locale": "auto",
-        "summaryEnabled": true,
-        "longRunningMs": 15000
-      }
+      "skill-streaming": { "enabled": true }
     }
   }
 }
 ```
 
-Then restart the gateway:
+### Restart
 
 ```bash
 openclaw gateway restart
 ```
 
----
-
-## Quick Start (Zero-Config)
-
-The plugin works immediately with no configuration. It:
-
-- Detects when a skill is active via `<available_skills>` in the system prompt
-- Identifies the specific skill when the agent reads its `SKILL.md`
-- Extracts human-readable labels from tool calls (curl URLs, bash commands, tool names)
-- Sends `⏳ starting` and `✅ done (Xs)` messages for every tool call
-- Skips `read`, `write`, and `edit` tool calls (internal operations, not user-visible)
-
-No changes to your skills are needed.
+**That's it.** The plugin works immediately — no skill modifications needed.
 
 ---
 
-## Declarative Enhancement (SKILL.md)
+## How It Works
 
-Skills can optionally declare streaming metadata in their `SKILL.md` frontmatter. This enables:
+```
+┌─────────────────┐     ┌──────────────┐     ┌──────────────────┐
+│ message_received │────>│   llm_input  │────>│ before_tool_call │
+│                  │     │              │     │                  │
+│ Capture channel  │     │ Bridge to    │     │ Detect skill via │
+│ context (feishu, │     │ session key  │     │ SKILL.md read    │
+│ telegram, etc.)  │     │              │     │                  │
+└─────────────────┘     │ Detect skill │     │ Send ⏳ progress │
+                        │ capability   │     └────────┬─────────┘
+                        └──────────────┘              │
+                                                      v
+┌─────────────────┐                        ┌──────────────────┐
+│    agent_end    │<───────────────────────│ after_tool_call  │
+│                 │                        │                  │
+│ Send 📊 summary │                        │ Send ✅ done     │
+│ Clean up state  │                        │                  │
+└─────────────────┘                        └──────────────────┘
+```
 
-- Custom human-readable step labels
-- Accurate step counting (`[1/3]` instead of `[1/?]`)
-- Long-running step warnings with configurable poll intervals
-- Per-skill locale override
+**5 hooks, zero dependencies, fully automatic.**
 
-**Example `SKILL.md`:**
+---
+
+## Declarative Enhancement
+
+For a richer experience, skills can declare streaming config in `SKILL.md` frontmatter:
 
 ```yaml
 ---
@@ -109,95 +119,98 @@ streaming:
   summary: true
   locale: zh
 ---
-
-Your skill instructions here...
 ```
 
-**Frontmatter fields:**
+This gives you:
+
+| Feature | Without Config | With Config |
+|---|:---:|:---:|
+| Progress messages | `⏳ Executing: curl...` | `⏳ Querying external API...` |
+| Step counting | `[1/?]` | `[1/3]` |
+| Long-running alerts | - | `⚠️ Still working... (15s)` |
+| Custom locale | - | Per-skill override |
+
+<details>
+<summary><strong>Frontmatter field reference</strong></summary>
 
 | Field | Type | Description |
 |---|---|---|
-| `streaming.steps` | array | List of step declarations |
-| `steps[].match` | string | Substring matched against tool name or params |
-| `steps[].label` | string | Human-readable label shown in progress messages |
-| `steps[].long_running` | boolean | If true, sends "still working" warnings |
-| `steps[].poll_interval` | number | Interval (ms) for long-running warnings (default: uses `longRunningMs`) |
-| `streaming.summary` | boolean | Show summary message at the end |
-| `streaming.locale` | `"en"` \| `"zh"` | Override locale for this skill |
+| `streaming.steps` | array | Step declarations |
+| `steps[].match` | string | Substring to match against tool name/params |
+| `steps[].label` | string | Human-readable label |
+| `steps[].long_running` | boolean | Enable "still working" warnings |
+| `steps[].poll_interval` | number | Warning interval in ms |
+| `streaming.summary` | boolean | Show summary at end |
+| `streaming.locale` | `"en"` \| `"zh"` | Override locale |
+
+</details>
 
 ---
 
-## Configuration Options
+## Configuration
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | boolean | `true` | Enable or disable the plugin |
-| `locale` | `"en"` \| `"zh"` \| `"auto"` | `"auto"` | Language for progress messages |
-| `summaryEnabled` | boolean | `true` | Show summary after multi-step runs |
-| `longRunningMs` | number | `15000` | Interval (ms) for "still working" messages |
+All options are optional — defaults work out of the box.
 
-When `locale` is `"auto"`, the plugin defaults to English.
+```jsonc
+{
+  "plugins": {
+    "entries": {
+      "skill-streaming": {
+        "enabled": true,          // default: true
+        "locale": "auto",         // "en" | "zh" | "auto" (default: "auto" → English)
+        "summaryEnabled": true,   // default: true
+        "longRunningMs": 15000    // default: 15000
+      }
+    }
+  }
+}
+```
 
 ---
 
 ## Supported Channels
 
-Progress messages are sent as standalone messages to the user's active messaging channel:
+| Channel | Status | Method |
+|:---|:---:|:---|
+| **Feishu (飞书)** | Tested | Direct HTTP API |
+| **Telegram** | Supported | `runtime.channel.telegram` |
+| **Discord** | Supported | `runtime.channel.discord` |
+| **Slack** | Supported | `runtime.channel.slack` |
+| **WhatsApp** | Supported | `runtime.channel.whatsapp` |
+| **LINE** | Supported | `runtime.channel.line` |
+| **Signal** | Supported | `runtime.channel.signal` |
+| **iMessage** | Supported | `runtime.channel.imessage` |
 
-| Channel | Method |
-|---|---|
-| Telegram | `runtime.channel.telegram.sendMessageTelegram` |
-| Discord | `runtime.channel.discord.sendMessageDiscord` |
-| Slack | `runtime.channel.slack.sendMessageSlack` |
-| WhatsApp | `runtime.channel.whatsapp.sendMessageWhatsApp` |
-| Signal | `runtime.channel.signal.sendMessageSignal` |
-| LINE | `runtime.channel.line.sendMessageLine` |
-| iMessage | `runtime.channel.imessage.sendMessageIMessage` |
-| Feishu | Direct HTTP API (see note below) |
-
-> **Feishu note:** The Feishu plugin is loaded as an external plugin and does not register send functions on `runtime.channel`. This plugin sends Feishu messages directly via the [Feishu Open API](https://open.feishu.cn/document/server-docs/im-v1/message/create), using the app credentials from your OpenClaw configuration. No additional setup is required.
+> **Why is Feishu special?** The Feishu plugin loads as an external extension and doesn't register on `runtime.channel`. This plugin sends Feishu messages directly via the [Feishu Open API](https://open.feishu.cn/document/server-docs/im-v1/message/create) using your existing app credentials — no extra setup needed.
 
 ---
 
-## Architecture
+## Development
 
-The plugin registers five hooks in the OpenClaw plugin lifecycle:
+```bash
+git clone https://github.com/fly0pants/openclaw-plugin-skill-streaming.git
+cd openclaw-plugin-skill-streaming
+npm install
+npm run build
+npm test          # 51 tests across 6 modules
+```
 
-| Hook | Action |
-|---|---|
-| `message_received` | Captures inbound context (channelId, conversationId, accountId) for reply routing |
-| `llm_input` | Bridges inbound context to session key; detects skill via `<available_skills>` marker or `# Skill:` header |
-| `before_tool_call` | Identifies specific skill from SKILL.md reads; sends `⏳ starting` progress message |
-| `after_tool_call` | Sends `✅ done (Xs)` completion message |
-| `agent_end` | Sends optional summary, cleans up state |
+### Project Structure
 
-**Skill detection flow:**
-
-1. `llm_input` detects `<available_skills>` in the system prompt — marks session as "skill-capable"
-2. `before_tool_call` intercepts `read` calls to `SKILL.md` — identifies the exact skill name
-3. Subsequent tool calls (excluding `read`/`write`/`edit`) trigger progress messages
-
-**Label resolution order:**
-1. Declarative match from `SKILL.md` frontmatter (if configured)
-2. Auto-extracted from the tool call: curl URL, bash command, or tool name
-
-State is scoped per session key and cleaned up after each agent run. A background interval cleans up stale sessions (TTL: 10 minutes).
-
-**Zero runtime dependencies** — the plugin has no production npm dependencies.
-
----
-
-## Contributing
-
-1. Clone the repository
-2. Install dev dependencies: `npm install`
-3. Build: `npm run build`
-4. Run tests: `npm test`
-
-Pull requests are welcome. Please keep changes focused and include tests for new behavior.
+```
+src/
+├── index.ts          # Plugin entry — hooks & message routing
+├── label.ts          # Auto-extract labels from tool calls
+├── state.ts          # Per-session run state management
+├── matcher.ts        # Declarative step matching (SKILL.md)
+├── formatter.ts      # i18n message formatting (en/zh)
+├── config-loader.ts  # SKILL.md frontmatter parser
+├── sender.ts         # Channel adapter map
+└── types.ts          # Shared type definitions
+```
 
 ---
 
 ## License
 
-MIT © openclaw-plugin-skill-streaming contributors
+MIT
