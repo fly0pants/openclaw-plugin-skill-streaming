@@ -30,21 +30,40 @@ When an OpenClaw skill runs, it may execute multiple tool calls in the backgroun
 
 ## Installation
 
+### From local path (development)
+
 ```bash
-npm install openclaw-plugin-skill-streaming
+openclaw plugins install -l /path/to/openclaw-plugin-skill-streaming
 ```
 
-Then register it in your OpenClaw configuration:
+### From npm
+
+```bash
+npm install openclaw-plugin-skill-streaming
+openclaw plugins install -l node_modules/openclaw-plugin-skill-streaming
+```
+
+After installation, enable the plugin in `~/.openclaw/openclaw.json`:
 
 ```json
 {
-  "plugins": [
-    {
-      "id": "skill-streaming",
-      "path": "node_modules/openclaw-plugin-skill-streaming"
+  "plugins": {
+    "entries": {
+      "skill-streaming": {
+        "enabled": true,
+        "locale": "auto",
+        "summaryEnabled": true,
+        "longRunningMs": 15000
+      }
     }
-  ]
+  }
 }
+```
+
+Then restart the gateway:
+
+```bash
+openclaw gateway restart
 ```
 
 ---
@@ -53,9 +72,11 @@ Then register it in your OpenClaw configuration:
 
 The plugin works immediately with no configuration. It:
 
-- Detects the active skill from the system prompt automatically
+- Detects when a skill is active via `<available_skills>` in the system prompt
+- Identifies the specific skill when the agent reads its `SKILL.md`
 - Extracts human-readable labels from tool calls (curl URLs, bash commands, tool names)
 - Sends `⏳ starting` and `✅ done (Xs)` messages for every tool call
+- Skips `read`, `write`, and `edit` tool calls (internal operations, not user-visible)
 
 No changes to your skills are needed.
 
@@ -108,25 +129,6 @@ Your skill instructions here...
 
 ## Configuration Options
 
-Set these in your plugin config block:
-
-```json
-{
-  "plugins": [
-    {
-      "id": "skill-streaming",
-      "path": "node_modules/openclaw-plugin-skill-streaming",
-      "config": {
-        "enabled": true,
-        "locale": "auto",
-        "summaryEnabled": true,
-        "longRunningMs": 15000
-      }
-    }
-  ]
-}
-```
-
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | boolean | `true` | Enable or disable the plugin |
@@ -140,34 +142,46 @@ When `locale` is `"auto"`, the plugin defaults to English.
 
 ## Supported Channels
 
-Progress messages are sent as standalone messages to the user's active messaging channel. Supported platforms:
+Progress messages are sent as standalone messages to the user's active messaging channel:
 
-- Telegram
-- Discord
-- Slack
-- WhatsApp
-- Signal
-- LINE
-- Feishu (飞书)
+| Channel | Method |
+|---|---|
+| Telegram | `runtime.channel.telegram.sendMessageTelegram` |
+| Discord | `runtime.channel.discord.sendMessageDiscord` |
+| Slack | `runtime.channel.slack.sendMessageSlack` |
+| WhatsApp | `runtime.channel.whatsapp.sendMessageWhatsApp` |
+| Signal | `runtime.channel.signal.sendMessageSignal` |
+| LINE | `runtime.channel.line.sendMessageLine` |
+| iMessage | `runtime.channel.imessage.sendMessageIMessage` |
+| Feishu | Direct HTTP API (see note below) |
+
+> **Feishu note:** The Feishu plugin is loaded as an external plugin and does not register send functions on `runtime.channel`. This plugin sends Feishu messages directly via the [Feishu Open API](https://open.feishu.cn/document/server-docs/im-v1/message/create), using the app credentials from your OpenClaw configuration. No additional setup is required.
 
 ---
 
 ## Architecture
 
-The plugin registers four hooks in the OpenClaw plugin lifecycle:
+The plugin registers five hooks in the OpenClaw plugin lifecycle:
 
 | Hook | Action |
 |---|---|
-| `llm_input` | Detects the active skill name from the system prompt |
-| `before_tool_call` | Sends a `⏳ starting` progress message |
-| `after_tool_call` | Sends a `✅ done (Xs)` completion message |
+| `message_received` | Captures inbound context (channelId, conversationId, accountId) for reply routing |
+| `llm_input` | Bridges inbound context to session key; detects skill via `<available_skills>` marker or `# Skill:` header |
+| `before_tool_call` | Identifies specific skill from SKILL.md reads; sends `⏳ starting` progress message |
+| `after_tool_call` | Sends `✅ done (Xs)` completion message |
 | `agent_end` | Sends optional summary, cleans up state |
 
-Labels are resolved in order:
+**Skill detection flow:**
+
+1. `llm_input` detects `<available_skills>` in the system prompt — marks session as "skill-capable"
+2. `before_tool_call` intercepts `read` calls to `SKILL.md` — identifies the exact skill name
+3. Subsequent tool calls (excluding `read`/`write`/`edit`) trigger progress messages
+
+**Label resolution order:**
 1. Declarative match from `SKILL.md` frontmatter (if configured)
 2. Auto-extracted from the tool call: curl URL, bash command, or tool name
 
-State is scoped per session key and cleaned up after each agent run.
+State is scoped per session key and cleaned up after each agent run. A background interval cleans up stale sessions (TTL: 10 minutes).
 
 **Zero runtime dependencies** — the plugin has no production npm dependencies.
 

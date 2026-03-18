@@ -30,21 +30,40 @@
 
 ## 安装
 
+### 本地路径安装（开发）
+
 ```bash
-npm install openclaw-plugin-skill-streaming
+openclaw plugins install -l /path/to/openclaw-plugin-skill-streaming
 ```
 
-在 OpenClaw 配置中注册插件：
+### 从 npm 安装
+
+```bash
+npm install openclaw-plugin-skill-streaming
+openclaw plugins install -l node_modules/openclaw-plugin-skill-streaming
+```
+
+安装后，在 `~/.openclaw/openclaw.json` 中启用插件：
 
 ```json
 {
-  "plugins": [
-    {
-      "id": "skill-streaming",
-      "path": "node_modules/openclaw-plugin-skill-streaming"
+  "plugins": {
+    "entries": {
+      "skill-streaming": {
+        "enabled": true,
+        "locale": "auto",
+        "summaryEnabled": true,
+        "longRunningMs": 15000
+      }
     }
-  ]
+  }
 }
+```
+
+然后重启 gateway：
+
+```bash
+openclaw gateway restart
 ```
 
 ---
@@ -53,9 +72,11 @@ npm install openclaw-plugin-skill-streaming
 
 插件无需任何配置，开箱即用：
 
-- 自动从系统提示词中识别当前活跃的 skill
-- 自动从工具调用中提取可读标签（curl URL、bash 命令、工具名称等）
+- 通过系统提示词中的 `<available_skills>` 自动检测 skill 是否激活
+- 当 agent 读取 `SKILL.md` 时自动识别具体的 skill 名称
+- 从工具调用中自动提取可读标签（curl URL、bash 命令、工具名称等）
 - 每次工具调用都会发送 `⏳ 开始` 和 `✅ 完成（Xs）` 消息
+- 自动跳过 `read`、`write`、`edit` 工具调用（内部操作，无需对用户可见）
 
 无需修改任何已有 skill。
 
@@ -108,25 +129,6 @@ streaming:
 
 ## 配置项
 
-在插件配置块中设置以下选项：
-
-```json
-{
-  "plugins": [
-    {
-      "id": "skill-streaming",
-      "path": "node_modules/openclaw-plugin-skill-streaming",
-      "config": {
-        "enabled": true,
-        "locale": "auto",
-        "summaryEnabled": true,
-        "longRunningMs": 15000
-      }
-    }
-  ]
-}
-```
-
 | 选项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `enabled` | boolean | `true` | 启用或禁用插件 |
@@ -140,34 +142,46 @@ streaming:
 
 ## 支持的消息渠道
 
-进度消息以独立消息形式发送到用户当前使用的消息渠道，支持以下平台：
+进度消息以独立消息形式发送到用户当前使用的消息渠道：
 
-- Telegram
-- Discord
-- Slack
-- WhatsApp
-- Signal
-- LINE
-- 飞书
+| 渠道 | 发送方式 |
+|---|---|
+| Telegram | `runtime.channel.telegram.sendMessageTelegram` |
+| Discord | `runtime.channel.discord.sendMessageDiscord` |
+| Slack | `runtime.channel.slack.sendMessageSlack` |
+| WhatsApp | `runtime.channel.whatsapp.sendMessageWhatsApp` |
+| Signal | `runtime.channel.signal.sendMessageSignal` |
+| LINE | `runtime.channel.line.sendMessageLine` |
+| iMessage | `runtime.channel.imessage.sendMessageIMessage` |
+| 飞书 | 直接 HTTP API（见下方说明） |
+
+> **飞书说明：** 飞书插件作为外部插件加载，不在 `runtime.channel` 上注册发送函数。本插件通过[飞书开放平台 API](https://open.feishu.cn/document/server-docs/im-v1/message/create) 直接发送消息，使用 OpenClaw 配置中的飞书应用凭证，无需额外配置。
 
 ---
 
 ## 架构说明
 
-插件在 OpenClaw 插件生命周期中注册了四个钩子：
+插件在 OpenClaw 插件生命周期中注册了五个钩子：
 
 | 钩子 | 行为 |
 |---|---|
-| `llm_input` | 从系统提示词中识别当前活跃的 skill 名称 |
-| `before_tool_call` | 发送 `⏳ 开始` 进度消息 |
+| `message_received` | 捕获入站消息上下文（channelId、conversationId、accountId），用于回复路由 |
+| `llm_input` | 将入站上下文桥接到 sessionKey；通过 `<available_skills>` 标记或 `# Skill:` 头部检测 skill |
+| `before_tool_call` | 拦截 SKILL.md 读取以识别具体 skill；对其他工具调用发送 `⏳ 开始` 进度消息 |
 | `after_tool_call` | 发送 `✅ 完成（Xs）` 结束消息 |
 | `agent_end` | 发送可选汇总，清理会话状态 |
 
-标签解析优先级：
+**Skill 检测流程：**
+
+1. `llm_input` 检测系统提示词中的 `<available_skills>` — 标记该会话为"具有 skill 能力"
+2. `before_tool_call` 拦截对 `SKILL.md` 的 `read` 调用 — 识别具体的 skill 名称
+3. 后续的工具调用（排除 `read`/`write`/`edit`）触发进度消息
+
+**标签解析优先级：**
 1. 从 `SKILL.md` frontmatter 中匹配的声明式标签（如已配置）
 2. 从工具调用中自动提取：curl URL、bash 命令或工具名称
 
-状态按会话 key 隔离，每次 agent 运行结束后自动清理。
+状态按 sessionKey 隔离，每次 agent 运行结束后自动清理。后台定时器清理过期会话（TTL：10 分钟）。
 
 **零运行时依赖** — 插件无任何生产环境 npm 依赖。
 
