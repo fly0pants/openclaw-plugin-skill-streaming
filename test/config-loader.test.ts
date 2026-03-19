@@ -31,6 +31,33 @@ metadata:
     expect(config!.summary).toBe(true);
   });
 
+  it("extracts top-level streaming config from SKILL.md frontmatter", () => {
+    const content = `---
+name: my-skill
+description: A skill
+streaming:
+  steps:
+    - match: "api.example.com"
+      label: "Querying API"
+    - match: "process-data"
+      label: "Processing"
+      long_running: true
+      poll_interval: 10000
+  summary: true
+  locale: en
+---
+# My Skill`;
+    const config = parseStreamingConfig(content);
+    expect(config).not.toBeNull();
+    expect(config!.steps).toHaveLength(2);
+    expect(config!.steps![0].match).toBe("api.example.com");
+    expect(config!.steps![0].label).toBe("Querying API");
+    expect(config!.steps![1].long_running).toBe(true);
+    expect(config!.steps![1].poll_interval).toBe(10000);
+    expect(config!.summary).toBe(true);
+    expect(config!.locale).toBe("en");
+  });
+
   it("returns null when no streaming config", () => {
     const content = `---
 name: weather

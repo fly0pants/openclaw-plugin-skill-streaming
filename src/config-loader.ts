@@ -9,10 +9,11 @@ export function parseStreamingConfig(content: string): StreamingConfig | null {
   const yaml = fmMatch[1];
   if (!yaml.includes("streaming:")) return null;
 
-  const streamingMatch = yaml.match(/streaming:\n((?:[ ]{6,}.*\n?)*)/);
+  // Support streaming: at any indentation level (top-level or nested under metadata)
+  const streamingMatch = yaml.match(/([ ]*)streaming:\n((?:\1[ ]+.*\n?)*)/);
   if (!streamingMatch) return null;
 
-  const streamBlock = streamingMatch[1];
+  const streamBlock = streamingMatch[2];
 
   const steps: StreamingStepDecl[] = [];
   const stepMatches = streamBlock.matchAll(/-\s*match:\s*"?([^"\n]+)"?\n\s+label:\s*"?([^"\n]+)"?(?:\n\s+long_running:\s*(true|false))?(?:\n\s+poll_interval:\s*(\d+))?/g);
